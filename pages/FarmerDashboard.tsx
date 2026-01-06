@@ -23,13 +23,20 @@ const FarmerDashboard: React.FC = () => {
     const [selectedContract, setSelectedContract] = useState<ForwardContract | null>(null);
     const [acceptQuantity, setAcceptQuantity] = useState(0);
 
-    // Chat state
+    // Chat state with deal context
     const [chatOpen, setChatOpen] = useState(false);
     const [chatData, setChatData] = useState<{
         buyerId: string;
         buyerName: string;
         listingId: string;
-        listingTitle: string;
+        bidId: string;
+        dealContext: {
+            cropType: string;
+            quantity: number;
+            pricePerTon: number;
+            location: string;
+            bidAmount: number;
+        };
     } | null>(null);
 
     const openChat = (bid: Bid, listing: Listing) => {
@@ -37,7 +44,14 @@ const FarmerDashboard: React.FC = () => {
             buyerId: bid.buyerId,
             buyerName: bid.companyName || bid.buyerName,
             listingId: listing.id,
-            listingTitle: `${listing.residueType} - ${listing.quantityTons}T`
+            bidId: bid.id,
+            dealContext: {
+                cropType: listing.cropType,
+                quantity: bid.quantity,
+                pricePerTon: bid.pricePerTon,
+                location: listing.location,
+                bidAmount: bid.totalAmount
+            }
         });
         setChatOpen(true);
     };
@@ -730,7 +744,8 @@ const FarmerDashboard: React.FC = () => {
                     otherUserId={chatData.buyerId}
                     otherUserName={chatData.buyerName}
                     listingId={chatData.listingId}
-                    listingTitle={chatData.listingTitle}
+                    bidId={chatData.bidId}
+                    dealContext={chatData.dealContext}
                 />
             )}
         </div>
