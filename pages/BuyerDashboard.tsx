@@ -3,15 +3,17 @@ import { Link } from 'react-router-dom';
 import {
     Search, MapPin, TrendingUp, Package, FileText,
     Leaf, Building2, ChevronRight, Plus, Calendar,
-    IndianRupee, Users, Clock, AlertTriangle
+    IndianRupee, Users, Clock, AlertTriangle, MessageCircle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { UserType } from '../types';
+import { UserType, Listing } from '../types';
 import Badge from '../components/ui/Badge';
 import AuthModal from '../components/AuthModal';
 import CreateForwardContract from '../components/CreateForwardContract';
 import SupplyMap from '../components/SupplyMap';
-import { CROP_TYPES, INDIAN_STATES } from '../constants';
+import Chat from '../components/Chat';
+import { CROP_TYPES } from '../constants';
+import { getAllStates } from '../data/india-geography';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const BuyerDashboard: React.FC = () => {
@@ -144,8 +146,8 @@ const BuyerDashboard: React.FC = () => {
                         <button
                             onClick={() => setActiveTab('supply')}
                             className={`flex-1 py-4 px-6 font-medium text-sm transition-colors ${activeTab === 'supply'
-                                    ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
-                                    : 'text-earth-500 hover:text-earth-700'
+                                ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
+                                : 'text-earth-500 hover:text-earth-700'
                                 }`}
                         >
                             <Package size={18} className="inline mr-2" />
@@ -154,8 +156,8 @@ const BuyerDashboard: React.FC = () => {
                         <button
                             onClick={() => setActiveTab('map')}
                             className={`flex-1 py-4 px-6 font-medium text-sm transition-colors ${activeTab === 'map'
-                                    ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
-                                    : 'text-earth-500 hover:text-earth-700'
+                                ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
+                                : 'text-earth-500 hover:text-earth-700'
                                 }`}
                         >
                             <MapPin size={18} className="inline mr-2" />
@@ -164,8 +166,8 @@ const BuyerDashboard: React.FC = () => {
                         <button
                             onClick={() => setActiveTab('contracts')}
                             className={`flex-1 py-4 px-6 font-medium text-sm transition-colors ${activeTab === 'contracts'
-                                    ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
-                                    : 'text-earth-500 hover:text-earth-700'
+                                ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
+                                : 'text-earth-500 hover:text-earth-700'
                                 }`}
                         >
                             <Calendar size={18} className="inline mr-2" />
@@ -200,7 +202,7 @@ const BuyerDashboard: React.FC = () => {
                                         className="px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500"
                                     >
                                         <option value="All">All States</option>
-                                        {INDIAN_STATES.map(s => (
+                                        {getAllStates().map(s => (
                                             <option key={s} value={s}>{s}</option>
                                         ))}
                                     </select>

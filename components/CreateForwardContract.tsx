@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { X, Calendar, MapPin, IndianRupee, Package, Percent, Clock, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Calendar, MapPin, IndianRupee, Package, Percent, Clock, CheckCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { UserType, ForwardContract } from '../types';
-import { CROP_TYPES, INDIAN_STATES } from '../constants';
+import { CROP_TYPES } from '../constants';
+import { getAllStates, getDistrictsByState } from '../data/india-geography';
 import Modal from './ui/Modal';
 
 interface CreateForwardContractProps {
@@ -20,16 +21,32 @@ const CreateForwardContract: React.FC<CreateForwardContractProps> = ({ isOpen, o
         pricePerTon: 1500,
         deliveryStart: '',
         deliveryEnd: '',
-        location: '',
-        state: 'Punjab',
+        selectedState: '',
+        selectedDistrict: '',
         advancePaymentPercent: 20,
     });
+
+    const [districts, setDistricts] = useState<string[]>([]);
+    const allStates = getAllStates();
+
+    // Update districts when state changes
+    useEffect(() => {
+        if (formData.selectedState) {
+            const districtList = getDistrictsByState(formData.selectedState);
+            setDistricts(districtList);
+            setFormData(prev => ({ ...prev, selectedDistrict: '' }));
+        }
+    }, [formData.selectedState]);
 
     const selectedCrop = CROP_TYPES.find(c => c.name === formData.cropType);
     const residueOptions = selectedCrop?.residues || [];
 
     const handleSubmit = () => {
         if (!state.user || state.user.type !== UserType.BUYER) return;
+
+        const location = formData.selectedDistrict
+            ? `${formData.selectedDistrict}, ${formData.selectedState}`
+            : formData.selectedState;
 
         const newContract: ForwardContract = {
             id: `fc_${Date.now()}`,
@@ -41,17 +58,21 @@ const CreateForwardContract: React.FC<CreateForwardContractProps> = ({ isOpen, o
             quantityRequired: formData.quantityRequired,
             pricePerTon: formData.pricePerTon,
             deliveryWindow: { start: formData.deliveryStart, end: formData.deliveryEnd },
-            location: formData.location,
-            state: formData.state,
+            location: location,
+            state: formData.selectedState,
             advancePaymentPercent: formData.advancePaymentPercent,
             status: 'open',
             acceptedFarmers: [],
             createdAt: new Date().toISOString(),
-            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         };
 
         dispatch({ type: 'ADD_FORWARD_CONTRACT', payload: newContract });
         onClose();
+        resetForm();
+    };
+
+    const resetForm = () => {
         setStep(1);
         setFormData({
             cropType: '',
@@ -60,8 +81,8 @@ const CreateForwardContract: React.FC<CreateForwardContractProps> = ({ isOpen, o
             pricePerTon: 1500,
             deliveryStart: '',
             deliveryEnd: '',
-            location: '',
-            state: 'Punjab',
+            selectedState: '',
+            selectedDistrict: '',
             advancePaymentPercent: 20,
         });
     };
@@ -101,8 +122,8 @@ const CreateForwardContract: React.FC<CreateForwardContractProps> = ({ isOpen, o
                                         key={crop.id}
                                         onClick={() => setFormData({ ...formData, cropType: crop.name, residueType: '' })}
                                         className={`p-3 rounded-lg border-2 text-left transition-all ${formData.cropType === crop.name
-                                                ? 'border-nature-600 bg-nature-50'
-                                                : 'border-earth-200 hover:border-nature-300'
+                                            ? 'border-nature-600 bg-nature-50'
+                                            : 'border-earth-200 hover:border-nature-300'
                                             }`}
                                     >
                                         <span className="text-2xl mb-1 block">{crop.icon}</span>
@@ -121,8 +142,8 @@ const CreateForwardContract: React.FC<CreateForwardContractProps> = ({ isOpen, o
                                             key={residue}
                                             onClick={() => setFormData({ ...formData, residueType: residue })}
                                             className={`px-4 py-2 rounded-full border-2 font-medium transition-all ${formData.residueType === residue
-                                                    ? 'border-nature-600 bg-nature-600 text-white'
-                                                    : 'border-earth-300 hover:border-nature-400'
+                                                ? 'border-nature-600 bg-nature-600 text-white'
+                                                : 'border-earth-300 hover:border-nature-400'
                                                 }`}
                                         >
                                             {residue}
@@ -206,7 +227,7 @@ const CreateForwardContract: React.FC<CreateForwardContractProps> = ({ isOpen, o
                     </div>
                 )}
 
-                {/* Step 3: Delivery Details */}
+                {/* Step 3: Delivery Details with Cascading Dropdowns */}
                 {step === 3 && (
                     <div className="space-y-6">
                         <h3 className="text-lg font-semibold text-earth-800 mb-4">Delivery requirements</h3>
@@ -238,31 +259,40 @@ const CreateForwardContract: React.FC<CreateForwardContractProps> = ({ isOpen, o
                             </div>
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-earth-700 mb-2">
-                                <MapPin size={16} className="inline mr-1" />
-                                Preferred Location/District
-                            </label>
-                            <input
-                                type="text"
-                                placeholder="e.g., Ludhiana, Patiala"
-                                value={formData.location}
-                                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                                className="w-full px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500 focus:border-nature-500"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-earth-700 mb-2">State</label>
-                            <select
-                                value={formData.state}
-                                onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                                className="w-full px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500 focus:border-nature-500"
-                            >
-                                {INDIAN_STATES.map(s => (
-                                    <option key={s} value={s}>{s}</option>
-                                ))}
-                            </select>
+                        {/* State & District Cascading Dropdowns */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-earth-700 mb-2">
+                                    <MapPin size={16} className="inline mr-1" />
+                                    State *
+                                </label>
+                                <select
+                                    value={formData.selectedState}
+                                    onChange={(e) => setFormData({ ...formData, selectedState: e.target.value })}
+                                    className="w-full px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500 focus:border-nature-500"
+                                >
+                                    <option value="">Select State</option>
+                                    {allStates.map(s => (
+                                        <option key={s} value={s}>{s}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-earth-700 mb-2">
+                                    District (Optional)
+                                </label>
+                                <select
+                                    value={formData.selectedDistrict}
+                                    onChange={(e) => setFormData({ ...formData, selectedDistrict: e.target.value })}
+                                    disabled={!formData.selectedState}
+                                    className="w-full px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500 focus:border-nature-500 disabled:bg-earth-100"
+                                >
+                                    <option value="">Any District</option>
+                                    {districts.map(d => (
+                                        <option key={d} value={d}>{d}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         {/* Final Summary */}
@@ -273,7 +303,7 @@ const CreateForwardContract: React.FC<CreateForwardContractProps> = ({ isOpen, o
                                 <p>Price: <strong>₹{formData.pricePerTon}/ton</strong> (Total: ₹{totalValue.toLocaleString()})</p>
                                 <p>Advance: <strong>{formData.advancePaymentPercent}%</strong> (₹{advanceAmount.toLocaleString()})</p>
                                 <p>Delivery: {formData.deliveryStart} to {formData.deliveryEnd}</p>
-                                <p>Location: {formData.location}, {formData.state}</p>
+                                <p>Location: {formData.selectedDistrict ? `${formData.selectedDistrict}, ` : ''}{formData.selectedState}</p>
                             </div>
                         </div>
                     </div>
@@ -299,7 +329,7 @@ const CreateForwardContract: React.FC<CreateForwardContractProps> = ({ isOpen, o
                     ) : (
                         <button
                             onClick={handleSubmit}
-                            disabled={!formData.deliveryStart || !formData.deliveryEnd || !formData.location}
+                            disabled={!formData.deliveryStart || !formData.deliveryEnd || !formData.selectedState}
                             className="px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Publish Contract
