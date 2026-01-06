@@ -351,6 +351,73 @@ export interface Database {
                     proof_of_collection?: string | null
                 }
             }
+            conversations: {
+                Row: {
+                    id: string
+                    created_at: string
+                    listing_id: string | null
+                    farmer_id: string
+                    buyer_id: string
+                    last_message_at: string
+                    last_message_preview: string | null
+                    farmer_unread_count: number
+                    buyer_unread_count: number
+                }
+                Insert: {
+                    id?: string
+                    created_at?: string
+                    listing_id?: string | null
+                    farmer_id: string
+                    buyer_id: string
+                    last_message_at?: string
+                    last_message_preview?: string | null
+                    farmer_unread_count?: number
+                    buyer_unread_count?: number
+                }
+                Update: {
+                    id?: string
+                    created_at?: string
+                    listing_id?: string | null
+                    farmer_id?: string
+                    buyer_id?: string
+                    last_message_at?: string
+                    last_message_preview?: string | null
+                    farmer_unread_count?: number
+                    buyer_unread_count?: number
+                }
+            }
+            messages: {
+                Row: {
+                    id: string
+                    created_at: string
+                    conversation_id: string
+                    sender_id: string
+                    sender_role: 'farmer' | 'buyer'
+                    content: string
+                    is_read: boolean
+                    message_type: 'text' | 'offer' | 'system'
+                }
+                Insert: {
+                    id?: string
+                    created_at?: string
+                    conversation_id: string
+                    sender_id: string
+                    sender_role: 'farmer' | 'buyer'
+                    content: string
+                    is_read?: boolean
+                    message_type?: 'text' | 'offer' | 'system'
+                }
+                Update: {
+                    id?: string
+                    created_at?: string
+                    conversation_id?: string
+                    sender_id?: string
+                    sender_role?: 'farmer' | 'buyer'
+                    content?: string
+                    is_read?: boolean
+                    message_type?: 'text' | 'offer' | 'system'
+                }
+            }
         }
         Views: {
             [_ in never]: never

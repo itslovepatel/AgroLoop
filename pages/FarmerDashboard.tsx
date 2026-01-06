@@ -3,16 +3,17 @@ import { Link } from 'react-router-dom';
 import {
     Plus, IndianRupee, Package, Truck, Clock, CheckCircle,
     TrendingUp, Bell, ChevronRight, Leaf, AlertTriangle,
-    MapPin, Calendar, Building2, Eye, FileText
+    MapPin, Calendar, Building2, Eye, FileText, MessageCircle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { UserType, ForwardContract } from '../types';
+import { UserType, ForwardContract, Bid, Listing } from '../types';
 import Badge from '../components/ui/Badge';
 import CreateListing from '../components/CreateListing';
 import AuthModal from '../components/AuthModal';
 import PriceCalculator from '../components/PriceCalculator';
 import PickupTracker from '../components/PickupTracker';
 import Modal from '../components/ui/Modal';
+import Chat from '../components/Chat';
 
 const FarmerDashboard: React.FC = () => {
     const { state, dispatch, getUserListings, getUserContracts, getUnreadNotifications, acceptBid } = useApp();
@@ -21,6 +22,25 @@ const FarmerDashboard: React.FC = () => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'contracts' | 'calculator' | 'pickup'>('dashboard');
     const [selectedContract, setSelectedContract] = useState<ForwardContract | null>(null);
     const [acceptQuantity, setAcceptQuantity] = useState(0);
+
+    // Chat state
+    const [chatOpen, setChatOpen] = useState(false);
+    const [chatData, setChatData] = useState<{
+        buyerId: string;
+        buyerName: string;
+        listingId: string;
+        listingTitle: string;
+    } | null>(null);
+
+    const openChat = (bid: Bid, listing: Listing) => {
+        setChatData({
+            buyerId: bid.buyerId,
+            buyerName: bid.companyName || bid.buyerName,
+            listingId: listing.id,
+            listingTitle: `${listing.residueType} - ${listing.quantityTons}T`
+        });
+        setChatOpen(true);
+    };
 
     const isLoggedIn = state.user && state.user.type === UserType.FARMER;
     const listings = getUserListings();
@@ -149,8 +169,8 @@ const FarmerDashboard: React.FC = () => {
                         <button
                             onClick={() => setActiveTab('dashboard')}
                             className={`flex-1 py-4 px-4 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'dashboard'
-                                    ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
-                                    : 'text-earth-500 hover:text-earth-700'
+                                ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
+                                : 'text-earth-500 hover:text-earth-700'
                                 }`}
                         >
                             <Package size={16} className="inline mr-2" />
@@ -159,8 +179,8 @@ const FarmerDashboard: React.FC = () => {
                         <button
                             onClick={() => setActiveTab('contracts')}
                             className={`flex-1 py-4 px-4 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'contracts'
-                                    ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
-                                    : 'text-earth-500 hover:text-earth-700'
+                                ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
+                                : 'text-earth-500 hover:text-earth-700'
                                 }`}
                         >
                             <Calendar size={16} className="inline mr-2" />
@@ -174,8 +194,8 @@ const FarmerDashboard: React.FC = () => {
                         <button
                             onClick={() => setActiveTab('pickup')}
                             className={`flex-1 py-4 px-4 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'pickup'
-                                    ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
-                                    : 'text-earth-500 hover:text-earth-700'
+                                ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
+                                : 'text-earth-500 hover:text-earth-700'
                                 }`}
                         >
                             <Truck size={16} className="inline mr-2" />
@@ -184,8 +204,8 @@ const FarmerDashboard: React.FC = () => {
                         <button
                             onClick={() => setActiveTab('calculator')}
                             className={`flex-1 py-4 px-4 font-medium text-sm transition-colors whitespace-nowrap ${activeTab === 'calculator'
-                                    ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
-                                    : 'text-earth-500 hover:text-earth-700'
+                                ? 'text-nature-600 border-b-2 border-nature-600 bg-nature-50'
+                                : 'text-earth-500 hover:text-earth-700'
                                 }`}
                         >
                             <IndianRupee size={16} className="inline mr-2" />
@@ -265,7 +285,13 @@ const FarmerDashboard: React.FC = () => {
                                                                     Total: ₹{bid.totalAmount.toLocaleString()}
                                                                 </p>
                                                             </div>
-                                                            <div className="flex gap-2">
+                                                            <div className="flex gap-2 flex-wrap">
+                                                                <button
+                                                                    onClick={() => openChat(bid, listing)}
+                                                                    className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-2 rounded-lg font-medium text-sm transition-colors flex items-center gap-1"
+                                                                >
+                                                                    <MessageCircle size={16} /> Chat
+                                                                </button>
                                                                 <button
                                                                     onClick={() => acceptBid(listing.id, bid.id)}
                                                                     className="bg-nature-600 hover:bg-nature-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition-colors"
@@ -692,6 +718,21 @@ const FarmerDashboard: React.FC = () => {
                     </div>
                 )}
             </Modal>
+
+            {/* Chat Modal */}
+            {chatData && (
+                <Chat
+                    isOpen={chatOpen}
+                    onClose={() => {
+                        setChatOpen(false);
+                        setChatData(null);
+                    }}
+                    otherUserId={chatData.buyerId}
+                    otherUserName={chatData.buyerName}
+                    listingId={chatData.listingId}
+                    listingTitle={chatData.listingTitle}
+                />
+            )}
         </div>
     );
 };
