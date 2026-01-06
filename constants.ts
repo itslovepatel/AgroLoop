@@ -1,4 +1,5 @@
 import { Listing, NavItem, Stat, Equipment } from './types';
+import { getAllStates } from './data/india-geography';
 
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Home', path: '/' },
@@ -20,11 +21,8 @@ export const CROP_TYPES = [
   { id: 'soybean', name: 'Soybean', icon: '🫘', residues: ['Stalks', 'Pods'] },
 ];
 
-export const INDIAN_STATES = [
-  'Punjab', 'Haryana', 'Uttar Pradesh', 'Madhya Pradesh', 'Rajasthan',
-  'Gujarat', 'Maharashtra', 'Karnataka', 'Andhra Pradesh', 'Tamil Nadu',
-  'Bihar', 'West Bengal', 'Odisha', 'Chhattisgarh', 'Jharkhand',
-];
+// Use comprehensive India geography data
+export const INDIAN_STATES = getAllStates();
 
 export const BUYER_TYPES = [
   { id: 'bioenergy', name: 'Bioenergy Plant', icon: '⚡' },

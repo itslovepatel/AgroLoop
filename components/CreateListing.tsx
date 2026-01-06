@@ -1,14 +1,18 @@
-import React, { useState } from 'react';
-import { MapPin, Calendar, Scale, Sparkles, ChevronRight, ChevronLeft, Check } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { MapPin, Calendar, Scale, Sparkles, ChevronRight, ChevronLeft, Check, Loader2 } from 'lucide-react';
 import Modal from './ui/Modal';
 import { useApp } from '../context/AppContext';
-import { CROP_TYPES, QUALITY_OPTIONS, BASE_PRICES, INDIAN_STATES } from '../constants';
+import { CROP_TYPES, QUALITY_OPTIONS, BASE_PRICES } from '../constants';
+import { getAllStates, getDistrictsByState, getTalukasByDistrict } from '../data/india-geography';
 import { UserType, Farmer } from '../types';
 
 interface CreateListingProps {
     isOpen: boolean;
     onClose: () => void;
 }
+
+// Reverse geocoding cache
+const geocodeCache = new Map<string, { state: string; district: string; village: string }>();
 
 const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
     const { state, createListing } = useApp();
@@ -20,37 +24,155 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
     const [residueType, setResidueType] = useState('');
     const [quantity, setQuantity] = useState(10);
     const [quality, setQuality] = useState<'Premium' | 'Standard' | 'Mixed'>('Standard');
-    const [location, setLocation] = useState('');
-    const [selectedState, setSelectedState] = useState('Punjab');
+
+    // Location state - enhanced
+    const [selectedState, setSelectedState] = useState('');
+    const [selectedDistrict, setSelectedDistrict] = useState('');
+    const [selectedTaluka, setSelectedTaluka] = useState('');
+    const [village, setVillage] = useState('');
+    const [pincode, setPincode] = useState('');
+
     const [harvestStart, setHarvestStart] = useState('');
     const [harvestEnd, setHarvestEnd] = useState('');
-    const [useGPS, setUseGPS] = useState(false);
     const [gpsLoading, setGpsLoading] = useState(false);
+    const [gpsError, setGpsError] = useState('');
+
+    // Derived lists
+    const [districts, setDistricts] = useState<string[]>([]);
+    const [talukas, setTalukas] = useState<string[]>([]);
+    const allStates = getAllStates();
+
+    // Update districts when state changes
+    useEffect(() => {
+        if (selectedState) {
+            const districtList = getDistrictsByState(selectedState);
+            setDistricts(districtList);
+            setSelectedDistrict('');
+            setSelectedTaluka('');
+            setTalukas([]);
+        }
+    }, [selectedState]);
+
+    // Update talukas when district changes
+    useEffect(() => {
+        if (selectedState && selectedDistrict) {
+            const talukaList = getTalukasByDistrict(selectedState, selectedDistrict);
+            setTalukas(talukaList);
+            setSelectedTaluka('');
+        }
+    }, [selectedState, selectedDistrict]);
 
     const selectedCrop = CROP_TYPES.find(c => c.name === cropType);
     const qualityMultiplier = QUALITY_OPTIONS.find(q => q.id === quality)?.multiplier || 1;
     const basePrice = BASE_PRICES[cropType] || 1000;
     const suggestedPrice = Math.round(basePrice * qualityMultiplier);
 
-    const handleGetLocation = () => {
+    const handleGetLocation = async () => {
         setGpsLoading(true);
-        if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    // In production, reverse geocode this
-                    setLocation('Your Location (GPS)');
-                    setUseGPS(true);
-                    setGpsLoading(false);
-                },
-                () => {
-                    setGpsLoading(false);
-                    alert('Unable to get location. Please enter manually.');
-                }
-            );
-        } else {
+        setGpsError('');
+
+        if (!navigator.geolocation) {
+            setGpsError('Geolocation not supported by your browser');
             setGpsLoading(false);
-            alert('Geolocation not supported');
+            return;
         }
+
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                const cacheKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+
+                // Check cache first
+                if (geocodeCache.has(cacheKey)) {
+                    const cached = geocodeCache.get(cacheKey)!;
+                    setSelectedState(cached.state);
+                    setTimeout(() => setSelectedDistrict(cached.district), 100);
+                    setVillage(cached.village);
+                    setGpsLoading(false);
+                    return;
+                }
+
+                try {
+                    // Use OpenStreetMap Nominatim for reverse geocoding
+                    const response = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&addressdetails=1`,
+                        {
+                            headers: {
+                                'Accept-Language': 'en',
+                                'User-Agent': 'AgriLoop India Marketplace'
+                            }
+                        }
+                    );
+
+                    if (!response.ok) throw new Error('Geocoding failed');
+
+                    const data = await response.json();
+                    const address = data.address || {};
+
+                    // Extract location details
+                    const stateName = address.state || '';
+                    const districtName = address.county || address.state_district || address.city || '';
+                    const villageName = address.village || address.town || address.suburb || address.neighbourhood || '';
+                    const postcodeVal = address.postcode || '';
+
+                    // Normalize state name to match our data
+                    const normalizedState = allStates.find(s =>
+                        s.toLowerCase() === stateName.toLowerCase() ||
+                        stateName.toLowerCase().includes(s.toLowerCase())
+                    ) || '';
+
+                    // Set form values
+                    if (normalizedState) {
+                        setSelectedState(normalizedState);
+
+                        // Delay district setting to allow state effect to run
+                        setTimeout(() => {
+                            const districtList = getDistrictsByState(normalizedState);
+                            const normalizedDistrict = districtList.find(d =>
+                                d.toLowerCase() === districtName.toLowerCase() ||
+                                districtName.toLowerCase().includes(d.toLowerCase()) ||
+                                d.toLowerCase().includes(districtName.toLowerCase())
+                            ) || '';
+                            if (normalizedDistrict) {
+                                setSelectedDistrict(normalizedDistrict);
+                            }
+                        }, 100);
+                    }
+
+                    setVillage(villageName);
+                    setPincode(postcodeVal);
+
+                    // Cache the result
+                    geocodeCache.set(cacheKey, {
+                        state: normalizedState,
+                        district: districtName,
+                        village: villageName
+                    });
+
+                } catch (error) {
+                    setGpsError('Could not determine location. Please enter manually.');
+                }
+
+                setGpsLoading(false);
+            },
+            (error) => {
+                setGpsLoading(false);
+                switch (error.code) {
+                    case error.PERMISSION_DENIED:
+                        setGpsError('Location permission denied. Please enter manually.');
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        setGpsError('Location unavailable. Please enter manually.');
+                        break;
+                    case error.TIMEOUT:
+                        setGpsError('Location request timed out. Please try again.');
+                        break;
+                    default:
+                        setGpsError('Unable to get location. Please enter manually.');
+                }
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 300000 }
+        );
     };
 
     const handleSubmit = () => {
@@ -59,6 +181,10 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
         setIsLoading(true);
         const farmer = state.user as Farmer;
 
+        // Build full location string
+        const locationParts = [village, selectedTaluka, selectedDistrict, selectedState].filter(Boolean);
+        const fullLocation = locationParts.join(', ');
+
         setTimeout(() => {
             createListing({
                 farmerId: farmer.id,
@@ -66,8 +192,8 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
                 residueType,
                 quantityTons: quantity,
                 pricePerTon: suggestedPrice,
-                location: `${location}, ${selectedState}`,
-                district: location,
+                location: fullLocation,
+                district: selectedDistrict,
                 state: selectedState,
                 farmerName: farmer.name,
                 availableDate: harvestStart,
@@ -85,7 +211,11 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
             setResidueType('');
             setQuantity(10);
             setQuality('Standard');
-            setLocation('');
+            setSelectedState('');
+            setSelectedDistrict('');
+            setSelectedTaluka('');
+            setVillage('');
+            setPincode('');
             setHarvestStart('');
             setHarvestEnd('');
         }, 1500);
@@ -95,7 +225,7 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
         switch (step) {
             case 1: return cropType && residueType;
             case 2: return quantity > 0 && quality;
-            case 3: return location && selectedState && harvestStart && harvestEnd;
+            case 3: return selectedState && selectedDistrict && harvestStart && harvestEnd;
             default: return true;
         }
     };
@@ -115,8 +245,8 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
                                         key={crop.id}
                                         onClick={() => { setCropType(crop.name); setResidueType(''); }}
                                         className={`p-4 rounded-xl border-2 text-center transition-all hover:scale-105 ${cropType === crop.name
-                                                ? 'border-nature-500 bg-nature-50'
-                                                : 'border-earth-200 hover:border-nature-300'
+                                            ? 'border-nature-500 bg-nature-50'
+                                            : 'border-earth-200 hover:border-nature-300'
                                             }`}
                                     >
                                         <span className="text-3xl block mb-2">{crop.icon}</span>
@@ -137,8 +267,8 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
                                             key={r}
                                             onClick={() => setResidueType(r)}
                                             className={`px-4 py-2 rounded-full border-2 transition-all ${residueType === r
-                                                    ? 'border-nature-500 bg-nature-500 text-white'
-                                                    : 'border-earth-200 hover:border-nature-300'
+                                                ? 'border-nature-500 bg-nature-500 text-white'
+                                                : 'border-earth-200 hover:border-nature-300'
                                                 }`}
                                         >
                                             {r}
@@ -191,8 +321,8 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
                                         key={q.id}
                                         onClick={() => setQuality(q.id as typeof quality)}
                                         className={`w-full p-4 rounded-xl border-2 text-left transition-all flex items-center justify-between ${quality === q.id
-                                                ? 'border-nature-500 bg-nature-50'
-                                                : 'border-earth-200 hover:border-nature-300'
+                                            ? 'border-nature-500 bg-nature-50'
+                                            : 'border-earth-200 hover:border-nature-300'
                                             }`}
                                     >
                                         <div>
@@ -231,42 +361,110 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
                         <div>
                             <label className="block text-sm font-medium text-earth-700 mb-3">
                                 <MapPin className="inline mr-2" size={18} />
-                                Location
+                                Location Details
                             </label>
-                            <div className="space-y-3">
-                                <button
-                                    onClick={handleGetLocation}
-                                    disabled={gpsLoading}
-                                    className="w-full py-3 border-2 border-dashed border-nature-300 rounded-xl text-nature-700 hover:bg-nature-50 transition flex items-center justify-center gap-2"
-                                >
-                                    {gpsLoading ? (
-                                        <div className="w-5 h-5 border-2 border-nature-300 border-t-nature-600 rounded-full animate-spin" />
-                                    ) : (
-                                        <>
-                                            <MapPin size={20} />
-                                            Use My Current Location
-                                        </>
-                                    )}
-                                </button>
-                                <div className="text-center text-earth-400 text-sm">or enter manually</div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <input
-                                        type="text"
-                                        value={location}
-                                        onChange={(e) => setLocation(e.target.value)}
-                                        placeholder="District/Village"
-                                        className="px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500"
-                                    />
+
+                            {/* GPS Button */}
+                            <button
+                                onClick={handleGetLocation}
+                                disabled={gpsLoading}
+                                className="w-full py-3 border-2 border-dashed border-nature-300 rounded-xl text-nature-700 hover:bg-nature-50 transition flex items-center justify-center gap-2 mb-4"
+                            >
+                                {gpsLoading ? (
+                                    <>
+                                        <Loader2 size={20} className="animate-spin" />
+                                        Detecting location...
+                                    </>
+                                ) : (
+                                    <>
+                                        <MapPin size={20} />
+                                        📍 Use My Current Location
+                                    </>
+                                )}
+                            </button>
+
+                            {gpsError && (
+                                <p className="text-red-500 text-sm mb-3 bg-red-50 p-2 rounded-lg">
+                                    {gpsError}
+                                </p>
+                            )}
+
+                            <div className="text-center text-earth-400 text-sm mb-4">or enter manually</div>
+
+                            {/* State Dropdown */}
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                    <label className="block text-xs text-earth-500 mb-1">State *</label>
                                     <select
                                         value={selectedState}
                                         onChange={(e) => setSelectedState(e.target.value)}
-                                        className="px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500"
+                                        className="w-full px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500"
                                     >
-                                        {INDIAN_STATES.map(s => (
+                                        <option value="">Select State</option>
+                                        {allStates.map(s => (
                                             <option key={s} value={s}>{s}</option>
                                         ))}
                                     </select>
                                 </div>
+
+                                {/* District Dropdown */}
+                                <div>
+                                    <label className="block text-xs text-earth-500 mb-1">District *</label>
+                                    <select
+                                        value={selectedDistrict}
+                                        onChange={(e) => setSelectedDistrict(e.target.value)}
+                                        disabled={!selectedState}
+                                        className="w-full px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500 disabled:bg-earth-100"
+                                    >
+                                        <option value="">Select District</option>
+                                        {districts.map(d => (
+                                            <option key={d} value={d}>{d}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            {/* Taluka Dropdown (if available) */}
+                            <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                    <label className="block text-xs text-earth-500 mb-1">Taluka/Block</label>
+                                    <select
+                                        value={selectedTaluka}
+                                        onChange={(e) => setSelectedTaluka(e.target.value)}
+                                        disabled={!selectedDistrict || talukas.length === 0}
+                                        className="w-full px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500 disabled:bg-earth-100"
+                                    >
+                                        <option value="">{talukas.length ? 'Select Taluka' : 'N/A'}</option>
+                                        {talukas.map(t => (
+                                            <option key={t} value={t}>{t}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Pincode */}
+                                <div>
+                                    <label className="block text-xs text-earth-500 mb-1">Pincode</label>
+                                    <input
+                                        type="text"
+                                        value={pincode}
+                                        onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                        placeholder="6-digit pincode"
+                                        maxLength={6}
+                                        className="w-full px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Village/Town */}
+                            <div>
+                                <label className="block text-xs text-earth-500 mb-1">Village/Town Name</label>
+                                <input
+                                    type="text"
+                                    value={village}
+                                    onChange={(e) => setVillage(e.target.value)}
+                                    placeholder="Enter village or town name"
+                                    className="w-full px-4 py-3 border border-earth-300 rounded-lg focus:ring-2 focus:ring-nature-500"
+                                />
                             </div>
                         </div>
 
@@ -277,7 +475,7 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
                             </label>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="block text-xs text-earth-500 mb-1">Available From</label>
+                                    <label className="block text-xs text-earth-500 mb-1">Available From *</label>
                                     <input
                                         type="date"
                                         value={harvestStart}
@@ -286,7 +484,7 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs text-earth-500 mb-1">Available Until</label>
+                                    <label className="block text-xs text-earth-500 mb-1">Available Until *</label>
                                     <input
                                         type="date"
                                         value={harvestEnd}
@@ -317,8 +515,8 @@ const CreateListing: React.FC<CreateListingProps> = ({ isOpen, onClose }) => {
                                     <p className="font-medium">{quality}</p>
                                 </div>
                                 <div>
-                                    <span className="text-earth-500">Price:</span>
-                                    <p className="font-medium">₹{suggestedPrice}/ton</p>
+                                    <span className="text-earth-500">Location:</span>
+                                    <p className="font-medium">{selectedDistrict}, {selectedState}</p>
                                 </div>
                                 <div>
                                     <span className="text-earth-500">Total Value:</span>

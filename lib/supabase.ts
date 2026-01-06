@@ -175,3 +175,124 @@ export const getAllContracts = async () => {
         .order('created_at', { ascending: false });
     return { data, error };
 };
+
+// =============================================
+// REALTIME SUBSCRIPTIONS
+// =============================================
+
+export type BidPayload = {
+    id: string;
+    listing_id: string;
+    buyer_id: string;
+    buyer_name: string;
+    company_name?: string;
+    price_per_ton: number;
+    quantity_tons: number;
+    message?: string;
+    status: string;
+    created_at: string;
+};
+
+// Subscribe to new bids for specific listings (farmer's listings)
+export const subscribeToBids = (
+    listingIds: string[],
+    onNewBid: (bid: BidPayload) => void
+) => {
+    if (!listingIds.length) return null;
+
+    const channel = supabase
+        .channel('bids-realtime')
+        .on(
+            'postgres_changes',
+            {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'bids',
+            },
+            (payload) => {
+                const newBid = payload.new as BidPayload;
+                // Only trigger if bid is for one of the farmer's listings
+                if (listingIds.includes(newBid.listing_id)) {
+                    onNewBid(newBid);
+                }
+            }
+        )
+        .subscribe();
+
+    return channel;
+};
+
+// Unsubscribe from bids channel
+export const unsubscribeFromBids = async (channel: ReturnType<typeof supabase.channel> | null) => {
+    if (channel) {
+        await supabase.removeChannel(channel);
+    }
+};
+
+// Subscribe to bid status updates (for buyers)
+export const subscribeToBidUpdates = (
+    buyerId: string,
+    onBidUpdate: (bid: BidPayload) => void
+) => {
+    const channel = supabase
+        .channel('bid-updates')
+        .on(
+            'postgres_changes',
+            {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'bids',
+                filter: `buyer_id=eq.${buyerId}`
+            },
+            (payload) => {
+                onBidUpdate(payload.new as BidPayload);
+            }
+        )
+        .subscribe();
+
+    return channel;
+};
+
+// =============================================
+// EMAIL NOTIFICATION HELPERS
+// =============================================
+
+// Note: These would typically be called from a Supabase Edge Function
+// For now, we store the notification preference and let the backend handle it
+
+export const sendBidNotificationEmail = async (
+    farmerEmail: string,
+    farmerName: string,
+    bid: {
+        buyerName: string;
+        companyName?: string;
+        pricePerTon: number;
+        quantity: number;
+        listingCrop: string;
+    }
+) => {
+    // This would call a Supabase Edge Function or webhook
+    // For now, we just log it - actual implementation requires Edge Function
+    console.log('Bid notification would be sent to:', farmerEmail, {
+        to: farmerEmail,
+        subject: `New Bid on Your ${bid.listingCrop} Listing - AgriLoop`,
+        farmerName,
+        ...bid
+    });
+
+    // In production, this would call:
+    // await supabase.functions.invoke('send-bid-notification', { body: { ... } });
+
+    return { success: true };
+};
+
+// Get farmer email from listing
+export const getFarmerEmailFromListing = async (listingId: string) => {
+    const { data, error } = await supabase
+        .from('listings')
+        .select('farmer_id, profiles(email, name)')
+        .eq('id', listingId)
+        .single();
+
+    return { data, error };
+};
